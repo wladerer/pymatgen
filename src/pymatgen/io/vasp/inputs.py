@@ -531,7 +531,7 @@ class Poscar(MSONable):
 
         lattice_velocities: list[list[float]] = []
         velocities: list[list[float]] = []
-        predictor_corrector: list = []
+        predictor_corrector: list[list[list[float]]] = []
         predictor_corrector_preamble: str = ""
 
         if read_velocities:
@@ -540,17 +540,20 @@ class Poscar(MSONable):
             # There is no space between the coordinates and this section, so
             # it appears in the lines of the first chunk
             if len(lines) > ipos + n_sites + 1 and lines[ipos + n_sites + 1].lower().startswith("l"):
-                for line in lines[ipos + n_sites + 3 : ipos + n_sites + 9]:
-                    lattice_velocities.append([float(tok) for tok in line.split()])
+                lattice_lines = lines[ipos + n_sites + 3 : ipos + n_sites + 9]
+                lattice_velocities = [[float(tok) for tok in line.split()] for line in lattice_lines]
 
             # Parse velocities if any
             if len(chunks) > 1:
-                for line in chunks[1].strip().split("\n"):
-                    velocities.append([float(tok) for tok in line.split()])
+                velocities = [
+                    [float(tok) for tok in line.split()]
+                    for line in chunks[1].strip().splitlines()
+                ]
 
             # Parse the predictor-corrector data
             if len(chunks) > 2:
-                lines = chunks[2].strip().split("\n")
+                lines = chunks[2].strip().splitlines()
+
                 # There are 3 sets of 3xN Predictor corrector parameters
                 # So can't be stored as a single set of "site_property"
 
@@ -558,13 +561,17 @@ class Poscar(MSONable):
                 # Second line is POTIM
                 # Third line is the thermostat parameters
                 predictor_corrector_preamble = f"{lines[0]}\n{lines[1]}\n{lines[2]}"
+
                 # Rest is three sets of parameters, each set contains
                 # x, y, z predictor-corrector parameters for every atom in order
                 lines = lines[3:]
-                for st in range(n_sites):
-                    d1 = [float(tok) for tok in lines[st].split()]
-                    d2 = [float(tok) for tok in lines[st + n_sites].split()]
-                    d3 = [float(tok) for tok in lines[st + 2 * n_sites].split()]
+                if len(lines) != 3 * n_sites:
+                    raise ValueError("Predictor-corrector section does not contain 3*N lines.")
+
+                for i in range(n_sites):
+                    d1 = [float(tok) for tok in lines[i].split()]
+                    d2 = [float(tok) for tok in lines[i + n_sites].split()]
+                    d3 = [float(tok) for tok in lines[i + 2 * n_sites].split()]
                     predictor_corrector.append([d1, d2, d3])
 
         return cls(
